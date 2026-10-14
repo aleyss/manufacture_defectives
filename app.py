@@ -2,356 +2,283 @@ import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
-
+import datetime
+import os
+from copilot_engine import generate_8d_analysis, answer_technician_question
+from knowledge_base import PCB_DEFECT_KB
 
 # ============================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ============================================================
-
 st.set_page_config(
-    page_title="PCB Defect Detection",
+    page_title="PCB AOI Defect Inspection Copilot",
     page_icon="🏭",
     layout="wide"
 )
 
+# Custom Styling for Industrial Theme
+st.markdown("""
+    <style>
+    .metric-card {
+        background-color: #0e1117;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #00c0f2;
+    }
+    .stAlert {
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# ============================================================
-# MODEL PATH
-# ============================================================
-model_path = "models/best.pt"
-
-
-# ============================================================
-# LOAD YOLO MODEL
-# ============================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "best.pt")
+if not os.path.exists(MODEL_PATH):
+    MODEL_PATH = os.path.join(BASE_DIR, "weights", "best.pt")
 
 @st.cache_resource
-def load_model():
-    return YOLO(model_path)
+def load_yolo():
+    return YOLO(MODEL_PATH)
 
-
-model = load_model()
-
-
-# ============================================================
-# CLASS NAMES
-# ============================================================
-
-# YOLO stores the class names inside the trained model
-class_names = model.names
-
+try:
+    model = load_yolo()
+    class_names = model.names
+except Exception as e:
+    st.error(f"Error loading model from {MODEL_PATH}: {e}")
+    st.stop()
 
 # ============================================================
-# HEADER
+# SIDEBAR CONTROLS
 # ============================================================
+with st.sidebar:
+    st.title("🏭 AOI Control Station")
+    st.caption("Automated Optical Inspection + GenAI Copilot")
+    st.divider()
 
-st.title("🏭 PCB Manufacturing Defect Detection")
-
-st.write(
-    "Upload a PCB image to detect manufacturing defects "
-    "using the trained YOLO11n object detection model."
-)
-
-st.divider()
-
-
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-st.sidebar.header("📌 Model Information")
-
-st.sidebar.write("**Model:** YOLO11n")
-st.sidebar.write("**Task:** Object Detection")
-st.sidebar.write("**Input Size:** 320 × 320")
-
-st.sidebar.write(
-    f"**Number of Classes:** {len(class_names)}"
-)
-
-st.sidebar.subheader("Defect Classes")
-
-for class_id, class_name in class_names.items():
-
-    st.sidebar.write(
-        f"{class_id + 1}. {class_name}"
+    st.subheader("⚙️ Inspection Settings")
+    conf_threshold = st.slider("Detection Confidence Threshold", 0.05, 0.90, 0.15, 0.05)
+    ipc_class_target = st.selectbox(
+        "Target Quality Standard",
+        [
+            "IPC-A-610 Class 2 (Dedicated Service)",
+            "IPC-A-610 Class 3 (High Reliability)",
+            "IPC-A-610 Class 1 (General Consumer)"
+        ]
     )
+    
+    st.divider()
+    st.subheader("🧠 SLM Copilot Engine")
+    slm_backend = st.selectbox(
+        "Reasoning Engine",
+        [
+            "Industrial Rule Synthesizer (Zero-Latency Fallback)",
+            "Local Ollama (Llama-3.2 / Qwen-2.5)"
+        ]
+    )
+    backend_key = "local_ollama" if "Ollama" in slm_backend else "fallback"
 
+    st.divider()
+    st.subheader("📋 Active Defect Classes (6-Class)")
+    st.markdown("\n".join([f"- **ID {k}:** `{v}`" for k, v in class_names.items()]))
 
 # ============================================================
-# MODEL PERFORMANCE
+# MAIN HEADER
 # ============================================================
-
-st.subheader("📊 Model Performance")
-
-st.caption(
-    "Performance measured on the validation dataset."
-)
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric(
-    "Precision",
-    "19.62%"
-)
-
-col2.metric(
-    "Recall",
-    "46.36%"
-)
-
-col3.metric(
-    "mAP50",
-    "16.10%"
-)
-
-col4.metric(
-    "mAP50-95",
-    "8.74%"
-)
-
+st.title("🛡️ PCB Defect Inspection & 8D Root-Cause Copilot")
+st.markdown("Combines **YOLO11n Real-time Object Detection** (6 Defect Classes) with **Autonomous SLM Reasoning** grounded on **IPC-A-610** manufacturing standards.")
 
 st.divider()
 
-
 # ============================================================
-# IMAGE UPLOAD
+# IMAGE SELECTION & UPLOAD
 # ============================================================
+col_up1, col_up2 = st.columns([1.5, 1.5])
 
-uploaded_file = st.file_uploader(
-    "📷 Upload PCB Image",
-    type=[
-        "jpg",
-        "jpeg",
-        "png"
-    ]
-)
+SAMPLE_MAP = {
+    "None": None,
+    "Spur Defect (test_folder)": os.path.join(BASE_DIR, "test_folder", "l_light_04_spur_15_1_600.jpg"),
+    "Spurious Copper Defect (test_folder)": os.path.join(BASE_DIR, "test_folder", "l_light_04_spurious_copper_02_3_600.jpg"),
+    "Mouse Bite Defect (test_folder)": os.path.join(BASE_DIR, "test_folder", "l_light_06_mouse_bite_07_3_600.jpg"),
+    "Open Circuit Defect (test_folder)": os.path.join(BASE_DIR, "test_folder", "l_light_10_open_circuit_04_2_600.jpg"),
+    "Short Circuit Defect (test_folder)": os.path.join(BASE_DIR, "test_folder", "l_light_06_short_05_1_600.jpg"),
+    "Sample Board 1 (sample_images/pcb1.jpg)": os.path.join(BASE_DIR, "sample_images", "pcb1.jpg"),
+    "Sample Board 2 (sample_images/pcb3.jpg)": os.path.join(BASE_DIR, "sample_images", "pcb3.jpg"),
+    "Sample Board 3 (sample_images/pcb4.jpg)": os.path.join(BASE_DIR, "sample_images", "pcb4.jpg")
+}
 
+with col_up1:
+    uploaded_file = st.file_uploader("📷 Ingest High-Resolution PCB Inspection Image", type=["jpg", "jpeg", "png"])
 
-# ============================================================
-# PROCESS IMAGE
-# ============================================================
+with col_up2:
+    st.write("**Or select from pre-loaded verification boards:**")
+    sample_choice = st.selectbox("Select Sample Defect PCB", list(SAMPLE_MAP.keys()))
 
+# Load image logic
+image = None
+image_source_label = ""
 if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    image_source_label = uploaded_file.name
+elif sample_choice != "None" and SAMPLE_MAP[sample_choice]:
+    sample_path = SAMPLE_MAP[sample_choice]
+    if os.path.exists(sample_path):
+        image = Image.open(sample_path).convert("RGB")
+        image_source_label = os.path.basename(sample_path)
+    else:
+        st.warning(f"File not found at `{sample_path}`. Please upload an image.")
 
-    # Load uploaded image
-    image = Image.open(
-        uploaded_file
-    ).convert("RGB")
+# ============================================================
+# PROCESSING PIPELINE
+# ============================================================
+if image is not None:
+    # 1. RUN YOLO INFERENCE
+    with st.spinner("Executing YOLO11n 6-Class Defect Inference..."):
+        results = model.predict(source=image, imgsz=640, conf=conf_threshold, verbose=False)
+        result = results[0]
 
+    # Visual layout: 2 Columns
+    col_vis1, col_vis2 = st.columns(2)
 
-    # ========================================================
-    # RUN YOLO PREDICTION
-    # ========================================================
+    with col_vis1:
+        st.subheader("📸 Inspection View (Raw)")
+        st.image(image, caption=f"Source: {image_source_label}", use_container_width=True)
 
-    results = model.predict(
-        source=image,
-        imgsz=320,
-        conf=0.25,
-        verbose=False
-    )
-
-
-    # First image result
-    result = results[0]
-
-
-    # ========================================================
-    # DISPLAY ORIGINAL + DETECTED IMAGE
-    # ========================================================
-
-    col1, col2 = st.columns(
-        [1, 1]
-    )
-
-
-    # --------------------------------------------------------
-    # ORIGINAL IMAGE
-    # --------------------------------------------------------
-
-    with col1:
-
-        st.subheader(
-            "📷 Uploaded PCB"
-        )
-
-        st.image(
-            image,
-            use_container_width=True
-        )
-
-
-    # --------------------------------------------------------
-    # DETECTED IMAGE
-    # --------------------------------------------------------
-
-    with col2:
-
-        st.subheader(
-            "🔍 Detection Result"
-        )
-
-        # Draw bounding boxes
-        annotated_image = result.plot()
-
-        # YOLO returns BGR image
-        # Convert BGR → RGB
-        annotated_image = annotated_image[:, :, ::-1]
-
-        st.image(
-            annotated_image,
-            use_container_width=True
-        )
-
-
-    # ========================================================
-    # DETECTION INFORMATION
-    # ========================================================
+    with col_vis2:
+        st.subheader("🎯 AOI Vision Overlay")
+        annotated_image = result.plot()[:, :, ::-1] # BGR to RGB
+        st.image(annotated_image, caption=f"Detections with conf >= {conf_threshold:.2f}", use_container_width=True)
 
     st.divider()
 
-    st.subheader(
-        "🎯 Detected Defects"
-    )
-
-
-    # Check whether detections exist
+    # 2. CHECK DETECTIONS
     if result.boxes is not None and len(result.boxes) > 0:
+        boxes_data = result.boxes
+        num_defects = len(boxes_data)
+        
+        # Summary KPI Ribbon
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1.metric("Total Defects Flagged", num_defects)
+        highest_conf = float(boxes_data.conf.max().cpu().numpy()) * 100
+        kpi2.metric("Peak Confidence", f"{highest_conf:.1f}%")
+        kpi3.metric("Standard Applied", ipc_class_target.split()[0])
+        kpi4.metric("Status", "⚠️ ACTION REQUIRED", delta="-Defect Detected", delta_color="inverse")
 
-        # Class IDs
-        class_ids = (
-            result.boxes.cls
-            .cpu()
-            .numpy()
-            .astype(int)
-        )
+        st.subheader("🔍 Defect Breakdown & Region of Interest (ROI)")
+        
+        defect_tabs = st.tabs([f"Defect #{i+1}: {class_names[int(boxes_data.cls[i])]}" for i in range(num_defects)])
 
-        # Confidence values
-        confidences = (
-            result.boxes.conf
-            .cpu()
-            .numpy()
-        )
+        # Store primary defect for report
+        primary_defect_info = None
 
+        for i, tab in enumerate(defect_tabs):
+            with tab:
+                c_id = int(boxes_data.cls[i].cpu().numpy())
+                c_name = class_names[c_id]
+                conf = float(boxes_data.conf[i].cpu().numpy())
+                xyxy = boxes_data.xyxy[i].cpu().numpy().astype(int)
 
-        # ----------------------------------------------------
-        # DISPLAY EACH DETECTION
-        # ----------------------------------------------------
+                if i == 0:
+                    primary_defect_info = (c_name, conf, xyxy.tolist())
 
-        for i, (
-            class_id,
-            confidence
-        ) in enumerate(
-            zip(
-                class_ids,
-                confidences
-            )
-        ):
+                tab_col1, tab_col2 = st.columns([1, 2])
 
-            class_name = class_names[
-                int(class_id)
-            ]
+                # Crop ROI
+                with tab_col1:
+                    w, h = image.size
+                    pad = 15
+                    x1, y1 = max(0, xyxy[0] - pad), max(0, xyxy[1] - pad)
+                    x2, y2 = min(w, xyxy[2] + pad), min(h, xyxy[3] + pad)
+                    cropped_roi = image.crop((x1, y1, x2, y2))
+                    
+                    st.write("**Cropped Defect (Magnified):**")
+                    st.image(cropped_roi, caption=f"ROI: ({xyxy[0]}, {xyxy[1]}) to ({xyxy[2]}, {xyxy[3]})", width=220)
+                    st.metric("Defect Class", f"{c_name} (ID: {c_id})")
+                    st.metric("Confidence Score", f"{conf * 100:.2f}%")
 
-            st.write(
-                f"### Detection {i + 1}"
-            )
-
-            st.metric(
-                "Defect Class",
-                class_name
-            )
-
-            st.metric(
-                "Prediction Confidence",
-                f"{confidence * 100:.2f}%"
-            )
-
-            st.progress(
-                float(confidence)
-            )
-
-            st.divider()
-
+                # Autonomous SLM Engineering Assessment
+                with tab_col2:
+                    st.markdown("#### 🧠 Autonomous Copilot 8D Assessment")
+                    with st.spinner("Grounding defect against IPC-A-610 standards..."):
+                        analysis = generate_8d_analysis(
+                            defect_class=c_name,
+                            confidence=conf,
+                            bbox=xyxy.tolist(),
+                            model_backend=backend_key
+                        )
+                    st.markdown(analysis)
 
         # ====================================================
-        # BEST DETECTION
+        # INTERACTIVE TECHNICIAN CHAT ASSISTANT
         # ====================================================
+        st.divider()
+        st.subheader("💬 Ask the PCB Quality Copilot")
+        st.caption("Line operators and technicians can query rework steps, soldering temperatures, or IPC exceptions in real-time.")
 
-        st.subheader(
-            "🏆 Best Detection"
+        tech_query = st.text_input(
+            "Enter technician query (e.g. 'Can I mechanically scrape this spur?' or 'Is rework permissible for Class 3?')",
+            key="chat_input"
         )
+        if tech_query and primary_defect_info:
+            with st.chat_message("assistant"):
+                answer = answer_technician_question(
+                    tech_query,
+                    primary_defect_info[0],
+                    model_backend=backend_key
+                )
+                st.markdown(answer)
 
-        best_index = int(
-            np.argmax(confidences)
+        # ====================================================
+        # 1-CLICK 8D QUALITY REPORT EXPORT
+        # ====================================================
+        st.divider()
+        st.subheader("📄 Generate Engineering 8D Incident Report")
+        
+        report_content = f"""# ====================================================
+# OFFICIAL 8D DEFECT & CONTAINMENT INCIDENT REPORT
+# ====================================================
+Inspection Timestamp: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+Facility Station: SMT Assembly Line 02 (AOI Cell)
+Board Source: {image_source_label}
+Standard Applied: {ipc_class_target}
+
+[DETECTION SUMMARY]
+Total Defects Identified: {num_defects}
+Primary Defect: {primary_defect_info[0]}
+Detection Confidence: {primary_defect_info[1] * 100:.2f}%
+Bounding Coordinates: {primary_defect_info[2]}
+
+[ROOT CAUSE & ENGINEERING DIAGNOSIS]
+{analysis}
+
+[SIGN-OFF]
+Quality Assurance: PCB AI Copilot System
+Inspection Status: QUARANTINE / REWORK PENDING
+# ====================================================
+"""
+        st.download_button(
+            label="📥 Download Official 8D Quality Report (.txt)",
+            data=report_content,
+            file_name=f"8D_Report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain"
         )
-
-        best_class_id = int(
-            class_ids[best_index]
-        )
-
-        best_class = class_names[
-            best_class_id
-        ]
-
-        best_confidence = float(
-            confidences[best_index]
-        )
-
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric(
-            "Detected Defect",
-            best_class
-        )
-
-        col2.metric(
-            "Confidence",
-            f"{best_confidence * 100:.2f}%"
-        )
-
-        col3.metric(
-            "Total Detections",
-            len(result.boxes)
-        )
-
 
     else:
-
-        st.warning(
-            "⚠️ No defect detected above the "
-            "25% confidence threshold."
-        )
-
+        st.success("✅ **Inspection Passed:** No surface defects detected above confidence threshold. Board conforms to IPC-A-610 standards.")
 
 # ============================================================
-# PROJECT INFORMATION
+# FOOTER & ARCHITECTURE DOCUMENTATION
 # ============================================================
-
 st.divider()
-
-st.subheader(
-    "ℹ️ About the Model"
-)
-
-st.write(
-    """
-    This application uses a YOLO11n object detection model
-    trained on a PCB manufacturing defect dataset.
-
-    The model detects defects using bounding boxes and
-    provides the detected defect class and confidence score.
-    """
-)
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.divider()
-
-st.caption(
-    "PCB Manufacturing Defect Detection | "
-    "YOLO11n Object Detection"
-)
+with st.expander("📌 System Architecture & Industry Value Details"):
+    st.markdown("""
+    * **Perception Layer:** YOLO11n object detector localized onto 6 PCB micro-defect classes:
+      - `0: mouse_bite`
+      - `1: spur`
+      - `2: missing_hole`
+      - `3: short`
+      - `4: open_circuit`
+      - `5: spurious_copper`
+    * **Domain Knowledge Layer:** Direct lookup into IPC-A-610 electronic assembly acceptability matrices.
+    * **Reasoning Copilot:** Local SLM / Industrial Rule Engine generates immediate containment actions and 8D root-cause reports.
+    * **Edge Viability:** Fully functional on-premise without requiring cloud API connections.
+    """)

@@ -44,24 +44,34 @@ Bounding Boxes + Class + Confidence
 Visualized Result
 ```
 
+## 🏷️ Supported Defect Classes (6 Classes)
+
+The trained model identifies 6 critical PCB manufacturing defects:
+1. `mouse_bite` (ID 0) — Conductor edge nick / erosion
+2. `spur` (ID 1) — Trace protrusion / burred edge
+3. `missing_hole` (ID 2) — Missing drill hole / via
+4. `short` (ID 3) — Short circuit / solder bridge
+5. `open_circuit` (ID 4) — Broken trace / electrical discontinuity
+6. `spurious_copper` (ID 5) — Residual / isolated copper island
+
 ## 📂 Project Structure
 
 ```text
-manufacture_defective/
+manufacture_defectives/
 │
-├── app.py
+├── app.py                  # Streamlit AOI & 8D Copilot Web App
+├── copilot_engine.py       # SLM & IPC-A-610 Reasoning Engine
+├── knowledge_base.py       # IPC Standards & Root Cause KB (6 Classes)
+├── yolo_test.py            # Local verification test script
 ├── requirements.txt
 ├── README.md
-├── .gitignore
 │
 ├── models/
-│   └── best.pt
+│   ├── best.pt             # Trained YOLO11n 6-class weights
+│   └── class_names.txt     # 6 defect class labels
 │
-└── sample_images/
-    ├── pcb1.jpg
-    ├── pcb2.jpg
-    ├── pcb3.jpg
-    └── pcb4.jpg
+├── sample_images/          # Sample full-board inspection images
+└── test_folder/            # Verification images across all 6 defect classes
 ```
 
 ## 📊 Dataset

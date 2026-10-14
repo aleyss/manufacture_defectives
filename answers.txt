@@ -1,0 +1,37 @@
+For questions on 'What defect was detected in this PCB?':
+
+Primary Station to verify: SMT Line
+Standard Protocol:
+ None
+IPC Rule: In Class 2 and Class 3 electronics, trace integrity must conform to IPC-A-610 standards. If manual rework is permitted, use temperature-controlled micro-soldering not exceeding 315°C (600°F) to avoid pad delamination.
+
+Primary Station to verify: SMT Line
+Standard Protocol: None
+IPC Rule: In Class 2 and Class 3 electronics, trace integrity must conform to IPC-A-610 standards. If manual rework is permitted, use temperature-controlled micro-soldering not exceeding 315°C (600°F) to avoid pad delamination.
+
+class:short
+Quality Engineer Guidance regarding short:
+
+For questions on 'how to solve this':
+
+Primary Station to verify: Etching Station / Solder Paste Printing (SMT)
+Standard Protocol: Isolate board immediately to avoid power-on testing damage. Check if bridge is surface solder (reworkable) or copper (scrap).
+IPC Rule: In Class 2 and Class 3 electronics, trace integrity must conform to IPC-A-610 standards. If manual rework is permitted, use temperature-controlled micro-soldering not exceeding 315°C (600°F) to avoid pad delamination.
+
+class:missing hole
+Quality Engineer Guidance regarding missing_hole:
+
+For questions on 'how to solve this':
+
+Primary Station to verify: Mechanical Drilling / CNC Plating Station
+Standard Protocol: Halt CNC drill line D-04 immediately. Inspect drill spindle runout and verify tool breakage sensors.
+IPC Rule: In Class 2 and Class 3 electronics, trace integrity must conform to IPC-A-610 standards. If manual rework is permitted, use temperature-controlled micro-soldering not exceeding 315°C (600°F) to avoid pad delamination
+
+mouse bite
+Quality Engineer Guidance regarding mouse_bite:
+
+For questions on 'how can i solve this':
+
+Primary Station to verify: Chemical Etching / Routing & Breakaway Station
+Standard Protocol: Quarantine current panel rack. Measure remaining trace width with optical micrometer against 20% limit.
+IPC Rule: In Class 2 and Class 3 electronics, trace integrity must conform to IPC-A-610 standards. If manual rework is permitted, use temperature-controlled micro-soldering not exceeding 315°C (600°F) to avoid pad delamination
