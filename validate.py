@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-model_path = r"C:\Users\alekhya\OneDrive\Desktop\proj\manufacture_defectives\models\best.pt"
+model_path = r"models\best.pt"
 
 model = YOLO(model_path)
 
